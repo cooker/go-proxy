@@ -1,0 +1,5 @@
+{
+	"port": 13800,
+	"loglevel": "Info",
+	"connTimeOut": 6
+}
