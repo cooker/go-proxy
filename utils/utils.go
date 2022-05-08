@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"unsafe"
 )
 
 var hasPort = regexp.MustCompile(`:\d+$`)
@@ -31,13 +32,6 @@ func GetFreePort() (port int, err error) {
 }
 
 func HostPort(r *http.Request) (host string) {
-	//if r.Method == "CONNECT" {
-	//	host = r.URL.Host
-	//	if !hasPort.MatchString(host) {
-	//		host = net.JoinHostPort(host, portMap["https"])
-	//	}
-	//	return host
-	//}
 	host = r.URL.Host
 	if !hasPort.MatchString(host) {
 		host = net.JoinHostPort(host, portMap[r.URL.Scheme])
@@ -64,4 +58,8 @@ func GpsIp(ip string) string {
 	}
 
 	return fmt.Sprintf("%s %s", city.Country.Names["zh-CN"], city.City.Names["zh-CN"])
+}
+
+func ToString(datas *[]byte) string {
+	return *(*string)(unsafe.Pointer(datas))
 }

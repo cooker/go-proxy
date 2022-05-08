@@ -2,7 +2,7 @@ package net
 
 import (
 	"cooker/go-proxy/core"
-	"cooker/go-proxy/log"
+	"cooker/go-proxy/logger"
 	"cooker/go-proxy/utils"
 	"fmt"
 	"net"
@@ -12,6 +12,10 @@ import (
 type Server struct {
 	config *core.Config
 	reqId  int64
+}
+
+func (server Server) GetReqId() int64 {
+	return server.reqId
 }
 
 func (server Server) getPort() int {
@@ -32,14 +36,18 @@ func GetServer(config *core.Config) Server {
 }
 
 func (server *Server) Start() {
+	LOG = new(ServerLogger)
+	LOG.DefaultLogger = logger.DefaultLogger{}
+	LOG.Server = server
+
 	err := server.check()
 	if err != nil {
 		return
 	}
-	log.Info("启动服务，端口: %d", server.getPort())
+	LOG.Info("启动服务，端口: %d", server.getPort())
 	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", server.getPort()))
 	if err != nil {
-		log.Error("启动服务，出错", err)
+		LOG.Error("启动服务，出错", err)
 		return
 	}
 	for {
@@ -47,14 +55,14 @@ func (server *Server) Start() {
 		server.reqId++
 
 		if err != nil {
-			log.Error("[%.3d] 接收请求，出错 %s", server.reqId, err)
+			LOG.Error("接收请求，出错 %s", err)
 		}
-		log.Info("[%.3d] 接收请求：%s 定位：%s", server.reqId, client.RemoteAddr(), utils.GpsIp(client.RemoteAddr().(*net.TCPAddr).IP.String()))
+		LOG.Info("client：%s 定位：%s", client.RemoteAddr(), utils.GpsIp(client.RemoteAddr().(*net.TCPAddr).IP.String()))
 		proxy := newProxyConn(server.reqId, client, server)
 		go func() {
 			err := proxy.handle()
 			if err != nil {
-				log.Error("[%.3d] 代理处理失败", server.reqId, err)
+				LOG.Error("代理处理失败", err)
 				proxy.Close()
 			}
 		}()
@@ -65,7 +73,7 @@ func (server *Server) check() error {
 	if server.getPort() == 0 {
 		port, err := utils.GetFreePort()
 		if err != nil {
-			log.Error("服务启动异常", err)
+			LOG.Error("服务启动异常", err)
 			return err
 		}
 

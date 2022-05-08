@@ -3,24 +3,22 @@ package net
 import (
 	"bufio"
 	"cooker/go-proxy/core"
-	"cooker/go-proxy/log"
 	"cooker/go-proxy/utils"
 	"fmt"
 	"io"
-	"net"
+	net2 "net"
 	"net/http"
 	"sync"
 	"time"
 )
 
 type ProxyConn struct {
-	net.Conn
+	net2.Conn
 	proxy *Server
-
 	reqId int64
 }
 
-func newProxyConn(reqId int64, conn net.Conn, proxy *Server) *ProxyConn {
+func newProxyConn(reqId int64, conn net2.Conn, proxy *Server) *ProxyConn {
 	return &ProxyConn{
 		Conn:  conn,
 		reqId: reqId,
@@ -36,50 +34,48 @@ func (p *ProxyConn) handle() error {
 		return fmt.Errorf("http.ReadRequest %w", err)
 	}
 
-	//log.Info("消息请求：\n%s", string(reader.HistoryBuffer()))
+	//logger.Info("消息请求：\n%s", string(reader.HistoryBuffer()))
 	hostPort := utils.HostPort(request)
-	log.Info("[%.3d] 请求地址：%s", p.reqId, hostPort)
+	LOG.Info("请求地址：%s", hostPort)
 	if request.Method == "CONNECT" {
-		log.Info("[%.3d] CONNECT %s", p.reqId, hostPort)
+		LOG.Info("CONNECT %s", hostPort)
 		p.keepalive(hostPort)
 		return nil
 	}
-	log.Info("[%.3d] request %v", request.URL.Path)
+	LOG.Info("request %v", request.URL.Path)
 	p.noKeepAlive(hostPort, reader.HistoryBuffer())
 	return nil
 }
 
 func (p *ProxyConn) keepalive(hostport string) {
 	clientConn := p.Conn
-	targetConn, err := net.DialTimeout("tcp", hostport, p.proxy.GetConnectTimeOut()*time.Second)
+	targetConn, err := net2.DialTimeout("tcp", hostport, p.proxy.GetConnectTimeOut()*time.Second)
 	if err != nil {
-		s := "HTTP/1.1 502 Bad Gateway\r\n\r\n"
-		if _, err := io.WriteString(clientConn, s); err != nil {
-			log.Error("[%.3d]转发失败 %s", p.reqId, err)
-		}
+		core.SimpleResponse(http.StatusBadGateway).Write(clientConn)
+
 		if err := clientConn.Close(); err != nil {
-			log.Error("[%.3d]关闭连接失败 %s", p.reqId, err)
+			LOG.Error("关闭连接失败", err)
 		}
 		return
 	}
-	clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
-
+	core.SimpleResponse(http.StatusOK).Write(clientConn)
+	//io.WriteString(clientConn, core.CONTENT_OK)
 	copyDataAndClose(clientConn, targetConn)
 }
 
 func (p *ProxyConn) noKeepAlive(hostPort string, reqData []byte) {
 	clientConn := p.Conn
 
-	targetConn, err := net.DialTimeout("tcp", hostPort, p.proxy.GetConnectTimeOut()*time.Second)
+	targetConn, err := net2.DialTimeout("tcp", hostPort, p.proxy.GetConnectTimeOut()*time.Second)
 	if err != nil {
-		log.Error("转发请求，失败 %v", err)
+		LOG.Error("转发请求，失败 %v", err)
 		return
 	}
 	targetConn.Write(reqData)
-	copyDataAndClose(targetConn, clientConn)
+	copyDataAndClose(clientConn, targetConn)
 }
 
-func copyDataAndClose(a, b net.Conn) {
+func copyDataAndClose(a, b net2.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go copyData(a, b, &wg)
@@ -89,9 +85,9 @@ func copyDataAndClose(a, b net.Conn) {
 	b.Close()
 }
 
-func copyData(a net.Conn, b net.Conn, wg *sync.WaitGroup) {
+func copyData(a net2.Conn, b net2.Conn, wg *sync.WaitGroup) {
 	if _, err := io.Copy(b, a); err != nil {
-		log.Warning("数据转发，出错", err)
+		LOG.Warn("数据拷贝，出错", err)
 	}
 	wg.Done()
 }
